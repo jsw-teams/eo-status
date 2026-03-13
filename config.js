@@ -4,7 +4,7 @@ window.STATUS_APP_CONFIG = {
   refreshMs: 60000,
   historyStorageKey: 'jsw-status-history-v2',
   title: 'JSW Status',
-  titleZhHans: 'JSW 站点状态',
-  titleZhHant: 'JSW 站點狀態',
+  titleZhHans: '技术网 站点状态',
+  titleZhHant: '技术网 站點狀態',
   titleEn: 'JSW Status'
 };
