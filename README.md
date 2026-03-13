@@ -1,21 +1,12 @@
-# frontend-pages
+# Frontend Pages
 
-纯静态前端，兼容 Cloudflare Pages 与腾讯云 EO Pages。
+静态前端，兼容 Cloudflare Pages 与腾讯云 EO Pages。
 
-## 页面内容
+修改 `config.js` 中的 `apiBase` 与 `apiToken` 后直接部署。
 
-- 网站标题
-- 检测卡片
-- 名称
-- 实时可用性
-- 7 天历史可用率百分数
-- 7 天图表
-- 自动随浏览器语言切换
-
-## 配置
-
-修改 `config.js`：
-
-- `apiBase`
-- `apiToken`
-- `refreshMs`
+页面特性：
+- 自动按浏览器语言切换简体中文、繁体中文、英文
+- 只请求一次后端 API
+- 首次慢加载时显示分阶段等待提示
+- 优先展示上一次缓存结果，再等待最新结果返回
+- 适配移动端、平板和桌面端
