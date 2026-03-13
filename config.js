@@ -1,7 +1,10 @@
 window.STATUS_APP_CONFIG = {
-  apiBase: "https://api-status.jsw.ac.cn",
-  apiToken: "xBwDPZKsbsX9zOLSJ3yWMVZG",
+  apiBase: 'https://api-status.jsw.ac.cn',
+  apiToken: 'xBwDPZKsbsX9zOLSJ3yWMVZG',
   refreshMs: 60000,
-  title: "技术网 全站健康监测",
-  subtitle: "TechNetwork Full Site Health Monitoring"
+  historyStorageKey: 'jsw-status-history-v2',
+  title: 'JSW Status',
+  titleZhHans: 'JSW 站点状态',
+  titleZhHant: 'JSW 站點狀態',
+  titleEn: 'JSW Status'
 };
