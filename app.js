@@ -3,7 +3,6 @@
   const apiBase = String(config.apiBase || '').replace(/\/$/, '');
   const apiToken = String(config.apiToken || '').trim();
   const refreshMs = Number(config.refreshMs) > 0 ? Number(config.refreshMs) : 60000;
-  const storageKey = String(config.historyStorageKey || 'jsw-status-history-v1');
   const pageTitleEl = document.getElementById('pageTitle');
   const siteGrid = document.getElementById('siteGrid');
 
@@ -64,87 +63,6 @@
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
 
-  const todayKey = (date) => {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-  };
-
-  const loadHistory = () => {
-    try {
-      const raw = localStorage.getItem(storageKey);
-      const parsed = raw ? JSON.parse(raw) : {};
-      return parsed && typeof parsed === 'object' ? parsed : {};
-    } catch {
-      return {};
-    }
-  };
-
-  const saveHistory = (history) => {
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(history));
-    } catch {}
-  };
-
-  const pruneHistory = (history) => {
-    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    const next = {};
-    Object.entries(history).forEach(([host, days]) => {
-      if (!days || typeof days !== 'object') return;
-      const kept = {};
-      Object.entries(days).forEach(([day, stats]) => {
-        const time = new Date(`${day}T00:00:00`).getTime();
-        if (!Number.isNaN(time) && time >= cutoff - 24 * 60 * 60 * 1000) kept[day] = stats;
-      });
-      next[host] = kept;
-    });
-    return next;
-  };
-
-  const recordSamples = (results) => {
-    const history = pruneHistory(loadHistory());
-    const day = todayKey(new Date());
-    results.forEach((site) => {
-      const host = String(site.hostname || site.site_id || 'unknown');
-      if (!history[host] || typeof history[host] !== 'object') history[host] = {};
-      if (!history[host][day] || typeof history[host][day] !== 'object') history[host][day] = { total: 0, ok: 0 };
-      history[host][day].total += 1;
-      history[host][day].ok += site.ok ? 1 : 0;
-    });
-    saveHistory(history);
-    return history;
-  };
-
-  const getLast7Days = () => {
-    const list = [];
-    const base = new Date();
-    for (let i = 6; i >= 0; i -= 1) {
-      const d = new Date(base);
-      d.setDate(base.getDate() - i);
-      list.push(d);
-    }
-    return list;
-  };
-
-  const getHistorySummary = (history, host) => {
-    const days = getLast7Days();
-    const entries = days.map((date) => {
-      const key = todayKey(date);
-      const stats = history?.[host]?.[key] || { total: 0, ok: 0 };
-      const percent = stats.total > 0 ? (stats.ok / stats.total) * 100 : null;
-      return { key, label: date.toLocaleDateString(locale, { weekday: 'short' }), percent };
-    });
-    const totals = entries.reduce((acc, item) => {
-      const stats = history?.[host]?.[item.key] || { total: 0, ok: 0 };
-      acc.total += stats.total;
-      acc.ok += stats.ok;
-      return acc;
-    }, { total: 0, ok: 0 });
-    const overall = totals.total > 0 ? (totals.ok / totals.total) * 100 : null;
-    return { overall, entries };
-  };
-
   const barClass = (percent) => {
     if (percent == null) return 'bar-wrap';
     if (percent < 80) return 'bar-wrap bar-bad';
@@ -152,7 +70,7 @@
     return 'bar-wrap';
   };
 
-  const renderCards = (payload, history) => {
+  const renderCards = (payload) => {
     const results = Array.isArray(payload?.results) ? payload.results : [];
     if (!results.length) {
       siteGrid.innerHTML = `<div class="empty">${escapeHtml(t.noData)}</div>`;
@@ -160,14 +78,16 @@
     }
     siteGrid.innerHTML = results.map((site) => {
       const host = String(site.hostname || site.site_id || 'unknown');
-      const summary = getHistorySummary(history, host);
+      const history = site?.history_7d || {};
+      const historyDays = Array.isArray(history.days) ? history.days : [];
       const statusText = site.ok ? t.available : t.unavailable;
       const statusClass = site.ok ? 'badge badge-ok' : 'badge badge-bad';
-      const percentText = summary.overall == null ? '--' : `${summary.overall.toFixed(2)}%`;
-      const chart = summary.entries.map((entry) => {
-        const percent = entry.percent == null ? 0 : entry.percent;
+      const percentText = history.availability_percent == null ? '--' : `${Number(history.availability_percent).toFixed(2)}%`;
+      const chart = historyDays.map((entry) => {
+        const percent = typeof entry?.availability_percent === 'number' ? entry.availability_percent : 0;
         const height = Math.max(6, Math.min(100, Math.round(percent)));
-        return `<div class="${barClass(entry.percent)}"><div class="bar"><div class="bar-fill" style="height:${height}px"></div></div><div class="day">${escapeHtml(entry.label)}</div></div>`;
+        const label = String(entry?.date || '').slice(5);
+        return `<div class="${barClass(entry?.availability_percent)}"><div class="bar"><div class="bar-fill" style="height:${height}px"></div></div><div class="day">${escapeHtml(label)}</div></div>`;
       }).join('');
       return `
         <article class="site-card">
@@ -199,8 +119,7 @@
     try {
       const response = await fetch(apiUrl, { method: 'GET', cache: 'no-store' });
       const payload = await response.json();
-      const history = recordSamples(Array.isArray(payload?.results) ? payload.results : []);
-      renderCards(payload, history);
+      renderCards(payload);
     } catch (error) {
       renderError(error instanceof Error ? `${t.loadError}: ${error.message}` : t.loadError);
     }
