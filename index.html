@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>JSW 站点健康监测</title>
+    <meta name="description" content="JSW 站点健康监测面板" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="hero">
+        <div>
+          <h1>JSW 站点健康监测</h1>
+          <p id="subtitle">读取后端健康接口并展示检测与托管判断结果</p>
+        </div>
+        <div class="controls">
+          <button id="refreshButton" type="button">刷新</button>
+          <span id="refreshHint"></span>
+        </div>
+      </header>
+
+      <section class="summary-grid" id="summaryGrid">
+        <article class="card"><h2>模式</h2><p id="modeValue">-</p></article>
+        <article class="card"><h2>站点数</h2><p id="siteCountValue">-</p></article>
+        <article class="card"><h2>健康站点</h2><p id="healthyCountValue">-</p></article>
+        <article class="card"><h2>更新时间</h2><p id="generatedAtValue">-</p></article>
+      </section>
+
+      <section class="card status-card" id="statusCard">
+        <h2>全局状态</h2>
+        <pre id="statusBox">等待读取</pre>
+      </section>
+
+      <section class="table-wrap card">
+        <div class="table-header">
+          <h2>站点结果</h2>
+          <input id="searchInput" type="search" placeholder="筛选主机名" aria-label="筛选主机名" />
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>主机名</th>
+                <th>健康</th>
+                <th>状态</th>
+                <th>检查结果</th>
+                <th>实际动作</th>
+                <th>自动托管预判</th>
+                <th>暖机</th>
+              </tr>
+            </thead>
+            <tbody id="siteTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card raw-card">
+        <h2>原始 JSON</h2>
+        <pre id="rawJson">等待读取</pre>
+      </section>
+    </div>
+
+    <script src="./config.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
