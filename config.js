@@ -5,6 +5,23 @@ window.STATUS_APP_CONFIG = {
   historyStorageKey: 'jsw-status-history-v2',
   title: 'JSW Status',
   titleZhHans: '技术网 站点状态',
-  titleZhHant: '技术网 站點狀態',
-  titleEn: 'JSW Status'
+  titleZhHant: '技術網 站點狀態',
+  titleEn: 'JSW Status',
+  siteNames: {
+    'www.jsw.ac.cn': {
+      'zh-Hans': '主站',
+      'zh-Hant': '主站',
+      en: 'Main Site'
+    },
+    'mirror.jsw.ac.cn': {
+      'zh-Hans': '镜像站',
+      'zh-Hant': '鏡像站',
+      en: 'Mirror Site'
+    },
+    'upload-pic.jsw.ac.cn': {
+      'zh-Hans': '图床',
+      'zh-Hant': '圖床',
+      en: 'Image Upload'
+    }
+  }
 };

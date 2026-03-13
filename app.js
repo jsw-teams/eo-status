@@ -134,19 +134,42 @@
 
   const historyDaysFromPayload = (site) => {
     const history = site?.history_7d || {};
-    return Array.isArray(history.days) ? history.days : [];
+    const days = Array.isArray(history.days) ? history.days : [];
+    return days.slice(0, 7);
+  };
+
+  const allocateBars = (values) => {
+    const bases = values.map((value) => Math.floor(value));
+    let remain = 100 - bases.reduce((sum, value) => sum + value, 0);
+    const fractions = values.map((value, index) => ({ index, fraction: value - Math.floor(value) }))
+      .sort((a, b) => b.fraction - a.fraction);
+    for (let i = 0; i < fractions.length && remain > 0; i += 1) {
+      bases[fractions[i].index] += 1;
+      remain -= 1;
+    }
+    return bases;
   };
 
   const buildPercentBars = (site) => {
-    const history = site?.history_7d || {};
-    const percent = typeof history.availability_percent === 'number' ? Math.max(0, Math.min(100, Math.round(history.availability_percent))) : null;
-    if (percent == null) {
-      return Array.from({ length: 100 }, (_, i) => `<span class="micro-bar is-unknown" aria-hidden="true" style="animation-delay:${Math.min(i * 6, 600)}ms"></span>`).join('');
+    const days = historyDaysFromPayload(site);
+    const testedDays = days.filter((entry) => typeof entry?.availability_percent === 'number');
+    if (!testedDays.length) {
+      return Array.from({ length: 100 }, (_, i) => `<span class="micro-bar is-unknown" aria-hidden="true" style="animation-delay:${Math.min(i * 4, 320)}ms"></span>`).join('');
     }
-    return Array.from({ length: 100 }, (_, i) => {
-      const cls = i < percent ? 'is-ok' : 'is-bad';
-      return `<span class="micro-bar ${cls}" aria-hidden="true" style="animation-delay:${Math.min(i * 6, 600)}ms"></span>`;
-    }).join('');
+
+    const availableUnits = testedDays.reduce((sum, entry) => sum + Math.max(0, Math.min(100, Number(entry.availability_percent))), 0) / 7;
+    const testedUnits = (testedDays.length * 100) / 7;
+    const failedUnits = Math.max(0, testedUnits - availableUnits);
+    const unknownUnits = Math.max(0, 100 - testedUnits);
+    const [okCount, badCount, unknownCount] = allocateBars([availableUnits, failedUnits, unknownUnits]);
+    const states = [
+      ...Array.from({ length: okCount }, () => 'is-ok'),
+      ...Array.from({ length: badCount }, () => 'is-bad'),
+      ...Array.from({ length: unknownCount }, () => 'is-unknown')
+    ];
+
+    while (states.length < 100) states.push('is-unknown');
+    return states.slice(0, 100).map((cls, i) => `<span class="micro-bar ${cls}" aria-hidden="true" style="animation-delay:${Math.min(i * 4, 320)}ms"></span>`).join('');
   };
 
   const getIssueText = (site, generatedAt) => {
@@ -179,7 +202,6 @@
         <article class="site-card ${site.ok ? '' : 'site-card-bad'}">
           <div class="site-head">
             <h2 class="site-name">${escapeHtml(displayName)}</h2>
-            <div class="site-host">${escapeHtml(host)}</div>
           </div>
           <div class="status-row">
             <span class="label">${escapeHtml(t.realtime)}</span>
@@ -204,7 +226,6 @@
     siteGrid.innerHTML = Array.from({ length: count }, () => `
       <article class="site-card skeleton-card" aria-hidden="true">
         <div class="skeleton skeleton-title"></div>
-        <div class="skeleton skeleton-host"></div>
         <div class="status-row skeleton-row">
           <div class="skeleton skeleton-line short"></div>
           <div class="skeleton skeleton-pill"></div>
