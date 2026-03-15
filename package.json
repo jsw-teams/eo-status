@@ -1,0 +1,8 @@
+{
+  "name": "frontend-pages-status",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build-meta.mjs && node scripts/assemble-deploy.mjs"
+  }
+}
