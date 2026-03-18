@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -34,60 +34,71 @@ for (const item of filesToHash) {
 indexHtml = indexHtml.replace('</head>', `    <meta name="x-build-id" content="${meta.buildId}" />\n  </head>`);
 await writeFile(path.join(deployDir, 'index.html'), indexHtml, 'utf8');
 
-await writeFile(
-  path.join(deployDir, 'edgeone.json'),
-  JSON.stringify({
-    headers: [
-      {
-        source: '/',
-        headers: [
-          {
-            key: 'Cache-Control',
-            value: 'public, max-age=300, s-maxage=1800, stale-while-revalidate=86400, stale-if-error=86400'
-          }
-        ]
-      },
-      {
-        source: '/index.html',
-        headers: [
-          {
-            key: 'Cache-Control',
-            value: 'public, max-age=300, s-maxage=1800, stale-while-revalidate=86400, stale-if-error=86400'
-          }
-        ]
-      },
-      {
-        source: '/assets/*',
-        headers: [
-          {
-            key: 'Cache-Control',
-            value: 'public, max-age=31536000, s-maxage=31536000, immutable'
-          }
-        ]
-      },
-      {
-        source: '/build-info.json',
-        headers: [
-          {
-            key: 'Cache-Control',
-            value: 'public, max-age=300, s-maxage=1800, stale-while-revalidate=86400, stale-if-error=86400'
-          }
-        ]
-      }
-    ],
-    caches: [
-      { source: '/', cacheTtl: 1800 },
-      { source: '/index.html', cacheTtl: 1800 },
-      { source: '/assets/*', cacheTtl: 31536000 },
-      { source: '/build-info.json', cacheTtl: 1800 }
-    ]
-  }, null, 2) + '\n',
-  'utf8'
-);
+const edgeoneConfig = {
+  headers: [
+    {
+      source: '/',
+      headers: [
+        {
+          key: 'Cache-Control',
+          value: 'public, max-age=300, s-maxage=1800, stale-while-revalidate=86400, stale-if-error=86400'
+        }
+      ]
+    },
+    {
+      source: '/index.html',
+      headers: [
+        {
+          key: 'Cache-Control',
+          value: 'public, max-age=300, s-maxage=1800, stale-while-revalidate=86400, stale-if-error=86400'
+        }
+      ]
+    },
+    {
+      source: '/assets/*',
+      headers: [
+        {
+          key: 'Cache-Control',
+          value: 'public, max-age=31536000, s-maxage=31536000, immutable'
+        }
+      ]
+    },
+    {
+      source: '/build-info.json',
+      headers: [
+        {
+          key: 'Cache-Control',
+          value: 'public, max-age=300, s-maxage=1800, stale-while-revalidate=86400, stale-if-error=86400'
+        }
+      ]
+    }
+  ],
+  caches: [
+    { source: '/', cacheTtl: 1800 },
+    { source: '/index.html', cacheTtl: 1800 },
+    { source: '/assets/*', cacheTtl: 31536000 },
+    { source: '/build-info.json', cacheTtl: 1800 }
+  ]
+};
 
+await writeFile(path.join(deployDir, 'edgeone.json'), JSON.stringify(edgeoneConfig, null, 2) + '\n', 'utf8');
+await writeFile(path.join(deployDir, 'build-info.json'), JSON.stringify(meta, null, 2) + '\n', 'utf8');
 await writeFile(
-  path.join(deployDir, 'build-info.json'),
-  JSON.stringify(meta, null, 2) + '\n',
+  path.join(deployDir, '_headers'),
+  [
+    '/',
+    '  Cache-Control: public, max-age=300, s-maxage=1800, stale-while-revalidate=86400, stale-if-error=86400',
+    '',
+    '/index.html',
+    '  Cache-Control: public, max-age=300, s-maxage=1800, stale-while-revalidate=86400, stale-if-error=86400',
+    '',
+    '/assets/*',
+    '  Cache-Control: public, max-age=31536000, immutable',
+    '',
+    '/build-info.json',
+    '  Cache-Control: public, max-age=300, s-maxage=1800, stale-while-revalidate=86400, stale-if-error=86400',
+    ''
+  ].join('\n'),
   'utf8'
 );
 

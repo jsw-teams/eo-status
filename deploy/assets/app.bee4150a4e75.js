@@ -1,11 +1,14 @@
 (() => {
   const config = window.STATUS_APP_CONFIG || {};
-  const apiBase = String(config.apiBase || '').replace(/\/$/, '');
-  const apiToken = String(config.apiToken || '').trim();
+  const apiBase = String(config.apiBase || '').trim().replace(/\/$/, '');
+  const realtimePath = String(config.realtimePath || '/api/realtime').trim() || '/api/realtime';
+  const historyPath = String(config.historyPath || '/api/history?window=7').trim() || '/api/history?window=7';
   const pageTitleEl = document.getElementById('pageTitle');
   const siteGrid = document.getElementById('siteGrid');
   const loadStateEl = document.getElementById('loadState');
-  const fetchTimeoutMs = Number(config.fetchTimeoutMs) > 0 ? Number(config.fetchTimeoutMs) : 35000;
+  const fetchTimeoutMs = Number(config.fetchTimeoutMs) > 0 ? Number(config.fetchTimeoutMs) : 15000;
+  const refreshMs = config.refreshMs == null ? 0 : Math.max(0, Number(config.refreshMs) || 0);
+  const historyRefreshMs = config.historyRefreshMs == null ? 0 : Math.max(0, Number(config.historyRefreshMs) || 0);
   const locale = (() => {
     const lang = String(navigator.language || '').toLowerCase();
     if (lang.startsWith('zh-hk') || lang.startsWith('zh-tw') || lang.startsWith('zh-mo') || lang.includes('hant')) return 'zh-Hant';
@@ -18,17 +21,20 @@
       title: String(config.titleZhHans || config.title || 'JSW 站点状态'),
       available: '可用',
       unavailable: '不可用',
+      pending: '待刷新',
       realtime: '实时可用性',
       history7d: '7天可用率',
       historyIssue: '历史波动',
       noData: '暂无数据',
       loadError: '读取失败',
-      needConfig: '请先在 config.js 中填写 apiToken',
+      needConfig: '请先在 config.js 中填写 apiBase',
       loading0: '正在载入站点状态',
       loading1: '状态接口响应较慢，请稍候',
       loading2: '仍在读取状态数据，请耐心等待',
       loading3: '接口仍未返回',
       cached: '已先显示最近一次缓存结果',
+      partialHistory: '历史数据已加载，实时状态更新中',
+      partialRealtime: '实时状态已加载，历史数据更新中',
       issueTime: '异常时间',
       issueNow: '当前检测时间',
       issueHistory: '近7天异常',
@@ -39,17 +45,20 @@
       title: String(config.titleZhHant || config.title || 'JSW 站點狀態'),
       available: '可用',
       unavailable: '不可用',
+      pending: '待重新整理',
       realtime: '即時可用性',
       history7d: '7天可用率',
       historyIssue: '歷史波動',
       noData: '暫無資料',
       loadError: '讀取失敗',
-      needConfig: '請先在 config.js 中填寫 apiToken',
+      needConfig: '請先在 config.js 中填寫 apiBase',
       loading0: '正在載入站點狀態',
       loading1: '狀態介面回應較慢，請稍候',
       loading2: '仍在讀取狀態資料，請耐心等待',
       loading3: '介面仍未返回',
       cached: '已先顯示最近一次快取結果',
+      partialHistory: '歷史資料已載入，即時狀態更新中',
+      partialRealtime: '即時狀態已載入，歷史資料更新中',
       issueTime: '異常時間',
       issueNow: '目前檢測時間',
       issueHistory: '近7天異常',
@@ -60,17 +69,20 @@
       title: String(config.titleEn || config.title || 'JSW Status'),
       available: 'Available',
       unavailable: 'Unavailable',
+      pending: 'Pending',
       realtime: 'Live availability',
       history7d: '7-day uptime',
       historyIssue: 'Past issue',
       noData: 'No data',
       loadError: 'Load failed',
-      needConfig: 'Set apiToken in config.js first',
+      needConfig: 'Set apiBase in config.js first',
       loading0: 'Loading site status',
       loading1: 'The status API is responding slowly',
       loading2: 'Still loading status data, please wait',
       loading3: 'The API has not returned yet',
       cached: 'Showing the most recent cached result first',
+      partialHistory: 'History loaded, live status is still updating',
+      partialRealtime: 'Live status loaded, history is still updating',
       issueTime: 'Issue time',
       issueNow: 'Current check',
       issueHistory: 'Issues in 7 days',
@@ -84,16 +96,20 @@
   document.title = t.title;
   pageTitleEl.textContent = t.title;
 
-  const getApiUrl = () => {
-    if (!apiBase || !apiToken || apiToken === 'REPLACE_WITH_YOUR_TOKEN') return '';
-    return `${apiBase}/healthy-api/${encodeURIComponent(apiToken)}`;
+  const buildUrl = (path) => {
+    if (!apiBase) return '';
+    try {
+      return new URL(path, apiBase.endsWith('/') ? apiBase : `${apiBase}/`).toString();
+    } catch {
+      return '';
+    }
   };
 
-  const cacheKey = (() => {
-    const base = apiBase || 'api';
-    const tokenTail = apiToken ? apiToken.slice(-12) : 'token';
-    return `jsw-status-cache:${base}:${tokenTail}`;
-  })();
+  const getRealtimeUrl = () => buildUrl(realtimePath);
+  const getHistoryUrl = () => buildUrl(historyPath);
+
+  const realtimeCacheKey = String(config.realtimeStorageKey || `jsw-status-realtime-v3:${apiBase}:${realtimePath}`);
+  const historyCacheKey = String(config.historyStorageKey || `jsw-status-history-v3:${apiBase}:${historyPath}`);
 
   const escapeHtml = (value) => String(value)
     .replaceAll('&', '&amp;')
@@ -135,12 +151,6 @@
     return host;
   };
 
-  const historyDaysFromPayload = (site) => {
-    const history = site?.history_7d || {};
-    const days = Array.isArray(history.days) ? history.days : [];
-    return days.slice(0, 7);
-  };
-
   const allocateBars = (values, total = 100) => {
     const safeValues = values.map((value) => Math.max(0, Number(value) || 0));
     const bases = safeValues.map((value) => Math.floor(value));
@@ -154,15 +164,22 @@
     return bases;
   };
 
+  const historyDaysFromSite = (site) => {
+    const history = site?.history_7d || {};
+    const days = Array.isArray(history.days) ? history.days : [];
+    return days.slice(0, 31);
+  };
+
   const buildPercentBars = (site) => {
-    const days = historyDaysFromPayload(site);
+    const days = historyDaysFromSite(site);
     if (!days.length) {
       return Array.from({ length: 100 }, (_, i) => `<span class="micro-bar is-unknown" aria-hidden="true" style="animation-delay:${Math.min(i * 4, 320)}ms"></span>`).join('');
     }
 
     const dayWidths = allocateBars(Array.from({ length: days.length }, () => 100 / days.length), 100);
     const states = [];
-    const badClass = site.ok ? 'is-past-bad' : 'is-bad';
+    const liveKnown = typeof site.ok === 'boolean';
+    const badClass = liveKnown && site.ok === false ? 'is-bad' : 'is-past-bad';
 
     days.forEach((entry, dayIndex) => {
       const width = dayWidths[dayIndex] || 0;
@@ -187,9 +204,67 @@
     return states.slice(0, 100).map((cls, i) => `<span class="micro-bar ${cls}" aria-hidden="true" style="animation-delay:${Math.min(i * 4, 320)}ms"></span>`).join('');
   };
 
+  const loadCachedPayload = (key) => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const saveCachedPayload = (key, payload) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(payload));
+    } catch {}
+  };
+
+  const primaryState = {
+    realtime: loadCachedPayload(realtimeCacheKey),
+    history: loadCachedPayload(historyCacheKey)
+  };
+
+  const getSiteMap = (payload) => {
+    const items = Array.isArray(payload?.results) ? payload.results : [];
+    const map = new Map();
+    items.forEach((item) => {
+      const host = String(item?.hostname || '');
+      const id = String(item?.site_id || '');
+      if (host) map.set(`host:${host}`, item);
+      if (id) map.set(`id:${id}`, item);
+    });
+    return map;
+  };
+
+  const mergePayloads = (realtimePayload, historyPayload) => {
+    const realtimeItems = Array.isArray(realtimePayload?.results) ? realtimePayload.results : [];
+    const historyItems = Array.isArray(historyPayload?.results) ? historyPayload.results : [];
+    const realtimeMap = getSiteMap(realtimePayload);
+    const historyMap = getSiteMap(historyPayload);
+    const orderedHosts = [
+      ...Object.keys(config.siteNames || {}),
+      ...realtimeItems.map((item) => String(item.hostname || '')).filter(Boolean),
+      ...historyItems.map((item) => String(item.hostname || '')).filter(Boolean)
+    ].filter(Boolean);
+    const uniqueHosts = [...new Set(orderedHosts)];
+
+    return uniqueHosts.map((host) => {
+      const live = realtimeMap.get(`host:${host}`) || null;
+      const history = historyMap.get(`host:${host}`) || null;
+      return {
+        hostname: host,
+        site_id: String(live?.site_id || history?.site_id || host),
+        ...(history && history.history_7d ? { history_7d: history.history_7d } : {}),
+        ...(live || {})
+      };
+    });
+  };
+
   const getIssueText = (site, generatedAt) => {
     if (site.ok === false) return formatTime(generatedAt) || t.unknown;
-    const historyDays = historyDaysFromPayload(site)
+    const historyDays = historyDaysFromSite(site)
       .filter((entry) => typeof entry?.availability_percent === 'number' && entry.availability_percent < 100)
       .map((entry) => formatMmDd(entry.date));
     if (historyDays.length) return historyDays.join(' / ');
@@ -198,30 +273,33 @@
 
   const getIssueLabel = (site) => {
     if (site.ok === false) return t.issueNow;
-    const historyDays = historyDaysFromPayload(site)
+    const historyDays = historyDaysFromSite(site)
       .filter((entry) => typeof entry?.availability_percent === 'number' && entry.availability_percent < 100);
     return historyDays.length ? t.historyIssue : t.issueHistory;
   };
 
-  const renderCards = (payload) => {
-    const results = Array.isArray(payload?.results) ? payload.results : [];
-    const generatedAt = payload?.generated_at || '';
-    if (!results.length) {
+  const renderCards = () => {
+    const sites = mergePayloads(primaryState.realtime, primaryState.history);
+    const generatedAt = primaryState.realtime?.generated_at || primaryState.history?.generated_at || '';
+
+    if (!sites.length) {
       siteGrid.innerHTML = `<div class="message-card">${escapeHtml(t.noData)}</div>`;
       return;
     }
-    siteGrid.innerHTML = results.map((site) => {
+
+    siteGrid.innerHTML = sites.map((site) => {
       const host = String(site.hostname || site.site_id || 'unknown');
       const displayName = getDisplayName(host);
       const history = site?.history_7d || {};
-      const statusText = site.ok ? t.available : t.unavailable;
-      const statusClass = site.ok ? 'badge badge-ok' : 'badge badge-bad';
+      const liveKnown = typeof site.ok === 'boolean';
+      const statusText = liveKnown ? (site.ok ? t.available : t.unavailable) : t.pending;
+      const statusClass = liveKnown ? (site.ok ? 'badge badge-ok' : 'badge badge-bad') : 'badge badge-pending';
       const percentText = history.availability_percent == null ? '--' : `${Number(history.availability_percent).toFixed(2)}%`;
       const issueText = getIssueText(site, generatedAt);
       const issueLabel = getIssueLabel(site);
       const percentBars = buildPercentBars(site);
       return `
-        <article class="site-card ${site.ok ? '' : 'site-card-bad'}">
+        <article class="site-card ${liveKnown && site.ok === false ? 'site-card-bad' : ''}">
           <div class="site-head">
             <h2 class="site-name">${escapeHtml(displayName)}</h2>
           </div>
@@ -275,34 +353,68 @@
     if (!keepCards) siteGrid.innerHTML = `<div class="message-card error-card">${escapeHtml(message)}</div>`;
   };
 
-  const loadCachedPayload = () => {
+  const updateLoadStateAfterSuccess = () => {
+    if (primaryState.realtime && primaryState.history) {
+      setLoadState('', 'loading');
+      return;
+    }
+    if (primaryState.history && !primaryState.realtime) {
+      setLoadState(t.partialHistory, 'loading');
+      return;
+    }
+    if (primaryState.realtime && !primaryState.history) {
+      setLoadState(t.partialRealtime, 'loading');
+      return;
+    }
+    setLoadState(t.loading0, 'loading');
+  };
+
+  const fetchJson = async (url, { cache = 'default' } = {}) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), fetchTimeoutMs);
     try {
-      const raw = localStorage.getItem(cacheKey);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object') return null;
-      return parsed;
-    } catch {
-      return null;
+      const response = await fetch(url, {
+        method: 'GET',
+        cache,
+        signal: controller.signal
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return await response.json();
+    } finally {
+      clearTimeout(timeoutId);
     }
   };
 
-  const saveCachedPayload = (payload) => {
-    try {
-      localStorage.setItem(cacheKey, JSON.stringify(payload));
-    } catch {}
+
+  const fetchHistory = async () => {
+    const url = getHistoryUrl();
+    if (!url) throw new Error('history_url_missing');
+    const payload = await fetchJson(url, { cache: 'default' });
+    primaryState.history = payload;
+    saveCachedPayload(historyCacheKey, payload);
+    renderCards();
+    updateLoadStateAfterSuccess();
   };
 
-  const fetchStatusOnce = async () => {
-    const apiUrl = getApiUrl();
-    if (!apiUrl) {
+  const fetchRealtime = async () => {
+    const url = getRealtimeUrl();
+    if (!url) throw new Error('realtime_url_missing');
+    const payload = await fetchJson(url, { cache: 'no-store' });
+    primaryState.realtime = payload;
+    saveCachedPayload(realtimeCacheKey, payload);
+    renderCards();
+    updateLoadStateAfterSuccess();
+  };
+
+
+  const bootstrap = async () => {
+    if (!apiBase) {
       renderError(t.needConfig);
       return;
     }
 
-    const cached = loadCachedPayload();
-    if (cached) {
-      renderCards(cached);
+    if (primaryState.realtime || primaryState.history) {
+      renderCards();
       setLoadState(t.cached, 'loading');
     } else {
       renderSkeletons(3);
@@ -315,29 +427,43 @@
       setTimeout(() => setLoadState(t.loading3, 'loading'), 18000)
     ];
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), fetchTimeoutMs);
+    const [historyResult, realtimeResult] = await Promise.allSettled([
+      fetchHistory(),
+      fetchRealtime()
+    ]);
 
-    try {
-      const response = await fetch(apiUrl, {
-        method: 'GET',
-        cache: 'no-store',
-        signal: controller.signal
-      });
-      const payload = await response.json();
-      saveCachedPayload(payload);
-      renderCards(payload);
-      setLoadState('', 'loading');
-    } catch (error) {
-      const message = error && typeof error === 'object' && error.name === 'AbortError'
-        ? `${t.loadError}: timeout`
-        : (error instanceof Error ? `${t.loadError}: ${error.message}` : t.loadError);
-      renderError(message, Boolean(cached));
-    } finally {
-      clearTimeout(timeoutId);
-      loadingTimers.forEach(clearTimeout);
+    loadingTimers.forEach(clearTimeout);
+
+
+    updateLoadStateAfterSuccess();
+
+    if (historyResult.status === 'rejected' && primaryState.realtime) {
+      const message = historyResult.reason instanceof Error ? `${t.loadError}: ${historyResult.reason.message}` : t.loadError;
+      setLoadState(message, 'error');
+    }
+    if (realtimeResult.status === 'rejected' && primaryState.history) {
+      const message = realtimeResult.reason instanceof Error ? `${t.loadError}: ${realtimeResult.reason.message}` : t.loadError;
+      setLoadState(message, 'error');
+    }
+
+    if (refreshMs > 0) {
+      setInterval(() => {
+        fetchRealtime().catch((error) => {
+          const message = error instanceof Error ? `${t.loadError}: ${error.message}` : t.loadError;
+          renderError(message, Boolean(primaryState.realtime || primaryState.history));
+        });
+      }, refreshMs);
+    }
+
+    if (historyRefreshMs > 0) {
+      setInterval(() => {
+        fetchHistory().catch((error) => {
+          const message = error instanceof Error ? `${t.loadError}: ${error.message}` : t.loadError;
+          renderError(message, Boolean(primaryState.realtime || primaryState.history));
+        });
+      }, historyRefreshMs);
     }
   };
 
-  fetchStatusOnce();
+  bootstrap();
 })();

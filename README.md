@@ -2,7 +2,7 @@
 
 静态前端，兼容 Cloudflare Pages 与腾讯云 EO Pages。
 
-修改 `config.js` 中的 `apiBase` 与 `apiToken` 后直接部署。
+修改 `config.js` 中的 `apiBase` 后直接部署。默认首屏各请求一次：`/api/realtime` 与 `/api/history?window=7`，除非你手动把 `refreshMs` / `historyRefreshMs` 设为大于 0，否则不会自动轮询。
 
 页面特性：
 - 自动按浏览器语言切换简体中文、繁体中文、英文
@@ -48,6 +48,7 @@ npm run build
 
 - `deploy/index.html`：浏览器缓存 5 分钟，CDN 缓存 30 分钟
 - `deploy/assets/*`：浏览器和 CDN 都缓存 1 年，并使用 `immutable`
+- 根目录 `edgeone.json` 也同步覆盖 `/assets/*`，避免平台只读取仓库根配置时哈希资源退回默认 `max-age=0`
 
 这样静态资源带指纹文件名后，可以把缓存开得更激进，进一步减少 ESA/CDN 回源。
 
