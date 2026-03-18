@@ -35,33 +35,6 @@
           "value": "public, max-age=300, s-maxage=1800, stale-while-revalidate=86400, stale-if-error=86400"
         }
       ]
-    },
-    {
-      "source": "/config.js",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=300, must-revalidate"
-        }
-      ]
-    },
-    {
-      "source": "/app.js",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=300, must-revalidate"
-        }
-      ]
-    },
-    {
-      "source": "/styles.css",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=300, must-revalidate"
-        }
-      ]
     }
   ],
   "caches": [
@@ -80,18 +53,6 @@
     {
       "source": "/build-info.json",
       "cacheTtl": 1800
-    },
-    {
-      "source": "/config.js",
-      "cacheTtl": 300
-    },
-    {
-      "source": "/app.js",
-      "cacheTtl": 300
-    },
-    {
-      "source": "/styles.css",
-      "cacheTtl": 300
     }
   ]
 }

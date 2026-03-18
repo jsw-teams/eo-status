@@ -83,23 +83,5 @@ const edgeoneConfig = {
 
 await writeFile(path.join(deployDir, 'edgeone.json'), JSON.stringify(edgeoneConfig, null, 2) + '\n', 'utf8');
 await writeFile(path.join(deployDir, 'build-info.json'), JSON.stringify(meta, null, 2) + '\n', 'utf8');
-await writeFile(
-  path.join(deployDir, '_headers'),
-  [
-    '/',
-    '  Cache-Control: public, max-age=300, s-maxage=1800, stale-while-revalidate=86400, stale-if-error=86400',
-    '',
-    '/index.html',
-    '  Cache-Control: public, max-age=300, s-maxage=1800, stale-while-revalidate=86400, stale-if-error=86400',
-    '',
-    '/assets/*',
-    '  Cache-Control: public, max-age=31536000, immutable',
-    '',
-    '/build-info.json',
-    '  Cache-Control: public, max-age=300, s-maxage=1800, stale-while-revalidate=86400, stale-if-error=86400',
-    ''
-  ].join('\n'),
-  'utf8'
-);
 
 console.log(`Deploy bundle generated in ${deployDir}`);
