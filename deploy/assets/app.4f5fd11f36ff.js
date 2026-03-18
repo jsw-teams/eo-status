@@ -3,8 +3,9 @@
   const pageTitleEl = document.getElementById('pageTitle');
   const siteGrid = document.getElementById('siteGrid');
   const loadStateEl = document.getElementById('loadState');
+  const assistAreaEl = document.getElementById('assistArea');
 
-  if (!pageTitleEl || !siteGrid || !loadStateEl) {
+  if (!pageTitleEl || !siteGrid || !loadStateEl || !assistAreaEl) {
     console.error('[status-app] Required DOM nodes are missing');
     return;
   }
@@ -13,6 +14,9 @@
   const realtimePath = String(config.realtimePath || '/api/realtime').trim() || '/api/realtime';
   const historyPath = String(config.historyPath || '/api/history?window=7').trim() || '/api/history?window=7';
   const fetchTimeoutMs = Number(config.fetchTimeoutMs) > 0 ? Number(config.fetchTimeoutMs) : 15000;
+  const challengePath = String(config.challengePath || realtimePath || '/api/realtime').trim() || '/api/realtime';
+  const historyStorageKey = String(config.historyStorageKey || 'jsw-status-history-v6').trim() || 'jsw-status-history-v6';
+  const historyStorageMaxAgeMs = Number(config.historyStorageMaxAgeMs) > 0 ? Number(config.historyStorageMaxAgeMs) : 24 * 60 * 60 * 1000;
 
   const locale = (() => {
     const lang = String(navigator.language || '').toLowerCase();
@@ -40,7 +44,15 @@
       issueNow: '当前检测时间',
       issueHistory: '近7天异常',
       none: '无',
-      unknown: '待检测'
+      unknown: '待检测',
+      cachedHistoryLoaded: '已显示本地历史数据，正在更新最新结果',
+      cachedHistoryOnly: '网络更新失败，当前显示本地历史数据',
+      likelyChallenge: '可能被托管质询、WAF 或跨域策略拦截',
+      challengeTitle: '需要先通过浏览器验证',
+      challengeBody: '你的行为有点可疑，API 现在要求先完成一次浏览器验证，验证通过后才能继续拉取站点状态数据流。',
+      challengeHint: '请在新标签页打开验证入口，完成验证后回到本页再点重新获取。',
+      challengeOpen: '打开验证入口',
+      challengeRetry: '我已完成验证，重新获取'
     },
     'zh-Hant': {
       title: String(config.titleZhHant || config.title || 'JSW 站點狀態'),
@@ -60,7 +72,15 @@
       issueNow: '目前檢測時間',
       issueHistory: '近7天異常',
       none: '無',
-      unknown: '待檢測'
+      unknown: '待檢測',
+      cachedHistoryLoaded: '已顯示本機歷史資料，正在更新最新結果',
+      cachedHistoryOnly: '網路更新失敗，目前顯示本機歷史資料',
+      likelyChallenge: '可能被託管質詢、WAF 或跨域策略攔截',
+      challengeTitle: '需要先通過瀏覽器驗證',
+      challengeBody: '你的行為看起來有點可疑，API 現在要求先完成一次瀏覽器驗證，通過後才能繼續拉取站點狀態資料流。',
+      challengeHint: '請在新分頁打開驗證入口，完成驗證後回到本頁再點重新取得。',
+      challengeOpen: '打開驗證入口',
+      challengeRetry: '我已完成驗證，重新取得'
     },
     en: {
       title: String(config.titleEn || config.title || 'JSW Status'),
@@ -80,7 +100,15 @@
       issueNow: 'Current check',
       issueHistory: 'Issues in 7 days',
       none: 'None',
-      unknown: 'Pending'
+      unknown: 'Pending',
+      cachedHistoryLoaded: 'Showing cached history while refreshing latest data',
+      cachedHistoryOnly: 'Network refresh failed, showing cached history',
+      likelyChallenge: 'Likely blocked by a managed challenge, WAF, or CORS policy',
+      challengeTitle: 'Browser verification required',
+      challengeBody: 'Your traffic looks a little suspicious, so the API is asking you to complete a browser challenge before it can stream fresh status data.',
+      challengeHint: 'Open the verification page in a new tab, finish the check, then come back and retry.',
+      challengeOpen: 'Open verification page',
+      challengeRetry: 'I finished verification, retry'
     }
   };
 
@@ -249,6 +277,36 @@
     return historyDays.length ? t.historyIssue : t.issueHistory;
   };
 
+  const clearAssist = () => {
+    assistAreaEl.innerHTML = '';
+    assistAreaEl.className = 'assist-area hidden';
+  };
+
+  const renderChallengeAssist = (verifyUrl, detailMessage, keepCards = true) => {
+    if (!verifyUrl) return;
+    assistAreaEl.className = 'assist-area';
+    assistAreaEl.innerHTML = `
+      <div class="assist-card" role="status" aria-live="polite">
+        <div class="assist-title">${escapeHtml(t.challengeTitle)}</div>
+        <p class="assist-body">${escapeHtml(t.challengeBody)}</p>
+        <p class="assist-hint">${escapeHtml(detailMessage || t.challengeHint)}</p>
+        <div class="assist-actions">
+          <a class="assist-button assist-button-primary" href="${escapeHtml(verifyUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(t.challengeOpen)}</a>
+          <button type="button" class="assist-button assist-button-secondary" data-action="retry-challenge">${escapeHtml(t.challengeRetry)}</button>
+        </div>
+      </div>
+    `;
+    const retryButton = assistAreaEl.querySelector('[data-action="retry-challenge"]');
+    if (retryButton) {
+      retryButton.addEventListener('click', () => {
+        window.location.reload();
+      });
+    }
+    if (!keepCards) {
+      siteGrid.innerHTML = '';
+    }
+  };
+
   const setLoadState = (message = '', variant = 'loading') => {
     loadStateEl.className = `load-state ${variant}${message ? '' : ' hidden'}`;
     loadStateEl.textContent = message || '\u00A0';
@@ -256,7 +314,75 @@
 
   const renderError = (message, keepCards = false) => {
     setLoadState(message, 'error');
-    if (!keepCards) siteGrid.innerHTML = `<div class="message-card error-card">${escapeHtml(message)}</div>`;
+    if (!keepCards) {
+      clearAssist();
+      siteGrid.innerHTML = `<div class="message-card error-card">${escapeHtml(message)}</div>`;
+    }
+  };
+
+  const safeJsonParse = (value) => {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  };
+
+  const readHistoryCache = () => {
+    try {
+      const raw = window.localStorage.getItem(historyStorageKey);
+      if (!raw) return null;
+      const parsed = safeJsonParse(raw);
+      if (!parsed || typeof parsed !== 'object' || !parsed.payload) return null;
+      const savedAt = Number(parsed.savedAt || 0);
+      if (!Number.isFinite(savedAt) || savedAt <= 0) return null;
+      if (Date.now() - savedAt > historyStorageMaxAgeMs) return null;
+      const payload = parsed.payload;
+      if (!payload || typeof payload !== 'object' || !Array.isArray(payload.results)) return null;
+      return payload;
+    } catch {
+      return null;
+    }
+  };
+
+  const writeHistoryCache = (payload) => {
+    try {
+      if (!payload || typeof payload !== 'object' || !Array.isArray(payload.results)) return;
+      window.localStorage.setItem(historyStorageKey, JSON.stringify({
+        savedAt: Date.now(),
+        payload
+      }));
+    } catch {}
+  };
+
+  const isLikelyChallengeError = (error, url) => {
+    const message = error && error.message ? String(error.message) : String(error || '');
+    if (/managed challenge|cf-mitigated|non-json|html response/i.test(message)) return true;
+    if (/failed to fetch|load failed|networkerror/i.test(message)) {
+      try {
+        const target = new URL(url, window.location.href);
+        return target.origin !== window.location.origin;
+      } catch {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const normalizeFetchError = (error, url) => {
+    const fallback = t.loadError;
+    if (!error) return fallback;
+    const message = error && error.message ? String(error.message) : String(error);
+    if (/aborted|aborterror|timeout/i.test(message)) return `${fallback}: timeout`;
+    if (/managed challenge|cf-mitigated|non-json|html response/i.test(message)) return `${fallback}: ${t.likelyChallenge}`;
+    if (/failed to fetch|load failed|networkerror/i.test(message)) {
+      try {
+        const target = new URL(url, window.location.href);
+        if (target.origin !== window.location.origin) return `${fallback}: ${message}（${t.likelyChallenge}）`;
+      } catch {}
+      return `${fallback}: ${message}`;
+    }
+    return `${fallback}: ${message}`;
   };
 
   const renderSkeletons = (count = 3) => {
@@ -328,6 +454,7 @@
 
   const updateLoadStateAfterSuccess = () => {
     if (state.realtime && state.history) {
+      clearAssist();
       setLoadState('', 'loading');
       return;
     }
@@ -349,10 +476,21 @@
       const response = await fetch(url, {
         method: 'GET',
         cache: cacheMode,
+        credentials: 'include',
+        mode: 'cors',
         signal: controller.signal
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+      if (contentType && !contentType.includes('application/json')) {
+        const bodyText = await response.text();
+        if (/cf-mitigated|challenge|<html/i.test(bodyText)) throw new Error('managed challenge or html response');
+        throw new Error('non-json response');
+      }
       return await response.json();
+    } catch (error) {
+      if (error && error.name === 'AbortError') throw new Error('timeout');
+      throw error;
     } finally {
       window.clearTimeout(timeoutId);
     }
@@ -372,8 +510,17 @@
       return;
     }
 
-    renderSkeletons(3);
-    setLoadState(t.loading0, 'loading');
+    clearAssist();
+
+    const cachedHistory = readHistoryCache();
+    if (cachedHistory) {
+      state.history = cachedHistory;
+      renderCards();
+      setLoadState(t.cachedHistoryLoaded, 'loading');
+    } else {
+      renderSkeletons(3);
+      setLoadState(t.loading0, 'loading');
+    }
 
     const [historyResult, realtimeResult] = await Promise.allSettled([
       fetchJson(historyUrl, 'default'),
@@ -382,6 +529,7 @@
 
     if (historyResult.status === 'fulfilled') {
       state.history = historyResult.value;
+      writeHistoryCache(historyResult.value);
       renderCards();
       updateLoadStateAfterSuccess();
     }
@@ -393,24 +541,37 @@
     }
 
     if (!state.history && !state.realtime) {
-      const message = realtimeResult.status === 'rejected' && realtimeResult.reason instanceof Error
-        ? realtimeResult.reason.message
-        : historyResult.status === 'rejected' && historyResult.reason instanceof Error
-          ? historyResult.reason.message
-          : t.loadError;
-      renderError(`${t.loadError}: ${message}`);
+      const historyMessage = historyResult.status === 'rejected' ? normalizeFetchError(historyResult.reason, historyUrl) : '';
+      const realtimeMessage = realtimeResult.status === 'rejected' ? normalizeFetchError(realtimeResult.reason, realtimeUrl) : '';
+      const likelyChallenge = (historyResult.status === 'rejected' && isLikelyChallengeError(historyResult.reason, historyUrl))
+        || (realtimeResult.status === 'rejected' && isLikelyChallengeError(realtimeResult.reason, realtimeUrl));
+      const message = realtimeMessage || historyMessage || t.loadError;
+      renderError(message);
+      if (likelyChallenge) renderChallengeAssist(buildUrl(challengePath), t.challengeHint, false);
       return;
     }
 
-    if (historyResult.status === 'rejected' && state.realtime) {
-      const message = historyResult.reason instanceof Error ? `${t.loadError}: ${historyResult.reason.message}` : t.loadError;
+    if (historyResult.status === 'rejected' && state.history) {
+      const message = cachedHistory
+        ? `${t.cachedHistoryOnly}；${normalizeFetchError(historyResult.reason, historyUrl)}`
+        : normalizeFetchError(historyResult.reason, historyUrl);
       setLoadState(message, 'error');
+      if (isLikelyChallengeError(historyResult.reason, historyUrl)) renderChallengeAssist(buildUrl(challengePath), t.challengeHint, true);
+      if (!state.realtime) renderCards();
       return;
     }
 
     if (realtimeResult.status === 'rejected' && state.history) {
-      const message = realtimeResult.reason instanceof Error ? `${t.loadError}: ${realtimeResult.reason.message}` : t.loadError;
+      const message = normalizeFetchError(realtimeResult.reason, realtimeUrl);
+      setLoadState(cachedHistory ? `${t.cachedHistoryOnly}；${message}` : message, 'error');
+      if (isLikelyChallengeError(realtimeResult.reason, realtimeUrl)) renderChallengeAssist(buildUrl(challengePath), t.challengeHint, true);
+      return;
+    }
+
+    if (historyResult.status === 'rejected' && state.realtime && !state.history) {
+      const message = normalizeFetchError(historyResult.reason, historyUrl);
       setLoadState(message, 'error');
+      if (isLikelyChallengeError(historyResult.reason, historyUrl)) renderChallengeAssist(buildUrl(challengePath), t.challengeHint, true);
       return;
     }
 

@@ -2,62 +2,44 @@
 
 静态前端，兼容 Cloudflare Pages 与腾讯云 EO Pages。
 
-修改 `config.js` 中的 `apiBase` 后直接部署。默认首屏各请求一次：`/api/realtime` 与 `/api/history?window=7`，除非你手动把 `refreshMs` / `historyRefreshMs` 设为大于 0，否则不会自动轮询。
+修改 `config.js` 中的 `apiBase` 后直接部署。默认首屏各请求一次：`/api/realtime` 与 `/api/history?window=7`，不会自动轮询。
 
 页面特性：
 - 自动按浏览器语言切换简体中文、繁体中文、英文
 - 只请求一次后端 API
 - 首次慢加载时显示分阶段等待提示
-- 优先展示上一次缓存结果，再等待最新结果返回
+- 历史数据会写入 `localStorage`，下次打开先显示本地历史数据，再更新成最新结果
+- 实时状态不做本地持久缓存，避免把旧实时状态误当成当前状态
 - 适配移动端、平板和桌面端
 
-图表规则：绿色表示已检测可用比例，红色表示已检测不可用比例，灰色表示近 7 天内尚未形成检测数据的占位比例。
+图表规则：绿色表示已检测可用比例，橙/红表示已检测不可用比例，灰色表示近 7 天内尚未形成检测数据的占位比例。
 
-历史故障柱在站点当前可用时使用橙色显示，只有当前实时不可用时才使用红色。
+## 关于 Cloudflare 托管质询 / WAF
+
+如果 API 域名被 Cloudflare 托管质询、WAF 或其他跨域拦截命中，浏览器中的 `fetch` 往往会直接报 `Failed to fetch`，前端代码本身无法绕过这个挑战。
+
+这版前端做了两件事：
+- 当存在本地历史缓存时，先显示缓存，避免整个页面空白
+- 当跨域 API 请求失败时，提示更接近实际原因
+
+根本处理仍然建议二选一：
+- 给 `api-status.jsw.ac.cn/api/*` 加跳过 Managed Challenge / WAF Challenge 的规则
+- 或把 API 通过同源路径反代到状态页域名下，再把 `apiBase` 改成同源路径
 
 ## 缓存策略
 
-### 根目录直接部署
-
-适合不做构建时直接部署：
-
-- `/`、`/index.html`：浏览器缓存 5 分钟，CDN 缓存 30 分钟，并启用 `stale-while-revalidate`
-- `/config.js`：浏览器缓存 5 分钟，CDN 缓存 30 分钟
-- `/app.js`、`/styles.css`：浏览器缓存 1 天，CDN 缓存 7 天
-
-这样可以明显减少回源，同时不让入口页和配置文件长时间滞后。
-
-### 生产推荐：部署 `deploy/`
-
-执行：
-
-```bash
-npm run build
-```
-
-构建后会生成：
-
-- `deploy/index.html`
-- `deploy/assets/app.<hash>.js`
-- `deploy/assets/styles.<hash>.css`
-- `deploy/assets/config.<hash>.js`
-- `deploy/build-info.json`
-- `deploy/edgeone.json`
-
-推荐直接部署 `deploy/` 目录：
+生产推荐直接部署 `deploy/`：
 
 - `deploy/index.html`：浏览器缓存 5 分钟，CDN 缓存 30 分钟
 - `deploy/assets/*`：浏览器和 CDN 都缓存 1 年，并使用 `immutable`
-- 根目录 `edgeone.json` 也同步覆盖 `/assets/*`，避免平台只读取仓库根配置时哈希资源退回默认 `max-age=0`
+- `deploy/build-info.json`：浏览器缓存 5 分钟，CDN 缓存 30 分钟
+- 缓存控制完全由 `edgeone.json` 负责
 
-这样静态资源带指纹文件名后，可以把缓存开得更激进，进一步减少 ESA/CDN 回源。
+## 本地缓存配置
 
-## 实时状态接口
+`config.js` 提供：
 
-前端请求状态 API 时仍保留：
+- `historyStorageKey`
+- `historyStorageMaxAgeMs`
 
-```js
-cache: 'no-store'
-```
-
-这是刻意保留的。状态数据属于实时信息，前端 API 请求不建议做浏览器缓存，否则页面可能显示旧状态。
+默认本地历史缓存有效期为 24 小时。
