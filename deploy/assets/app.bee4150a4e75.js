@@ -3,22 +3,12 @@
   const apiBase = String(config.apiBase || '').trim().replace(/\/$/, '');
   const realtimePath = String(config.realtimePath || '/api/realtime').trim() || '/api/realtime';
   const historyPath = String(config.historyPath || '/api/history?window=7').trim() || '/api/history?window=7';
-<<<<<<<< HEAD:deploy/assets/app.bee4150a4e75.js
-========
-  const legacyCombinedPath = String(config.legacyCombinedPath || '/healthy-api').trim() || '/healthy-api';
-  const legacyToken = String(config.apiToken || '').trim();
->>>>>>>> 2fce889d62d766d655d97e55e92ec5db86d44d35:deploy/assets/app.ff5dc974ac3f.js
   const pageTitleEl = document.getElementById('pageTitle');
   const siteGrid = document.getElementById('siteGrid');
   const loadStateEl = document.getElementById('loadState');
   const fetchTimeoutMs = Number(config.fetchTimeoutMs) > 0 ? Number(config.fetchTimeoutMs) : 15000;
-<<<<<<<< HEAD:deploy/assets/app.bee4150a4e75.js
   const refreshMs = config.refreshMs == null ? 0 : Math.max(0, Number(config.refreshMs) || 0);
   const historyRefreshMs = config.historyRefreshMs == null ? 0 : Math.max(0, Number(config.historyRefreshMs) || 0);
-========
-  const refreshMs = Number(config.refreshMs) > 0 ? Number(config.refreshMs) : 60000;
-  const historyRefreshMs = Number(config.historyRefreshMs) > 0 ? Number(config.historyRefreshMs) : Math.max(refreshMs * 10, 600000);
->>>>>>>> 2fce889d62d766d655d97e55e92ec5db86d44d35:deploy/assets/app.ff5dc974ac3f.js
   const locale = (() => {
     const lang = String(navigator.language || '').toLowerCase();
     if (lang.startsWith('zh-hk') || lang.startsWith('zh-tw') || lang.startsWith('zh-mo') || lang.includes('hant')) return 'zh-Hant';
@@ -117,17 +107,6 @@
 
   const getRealtimeUrl = () => buildUrl(realtimePath);
   const getHistoryUrl = () => buildUrl(historyPath);
-<<<<<<<< HEAD:deploy/assets/app.bee4150a4e75.js
-========
-  const getLegacyUrl = () => {
-    const raw = buildUrl(legacyCombinedPath);
-    if (!raw) return '';
-    if (!legacyToken || legacyToken === 'REPLACE_WITH_YOUR_TOKEN') return raw;
-    const url = new URL(raw);
-    url.pathname = `${url.pathname.replace(/\/+$/, '')}/${encodeURIComponent(legacyToken)}`;
-    return url.toString();
-  };
->>>>>>>> 2fce889d62d766d655d97e55e92ec5db86d44d35:deploy/assets/app.ff5dc974ac3f.js
 
   const realtimeCacheKey = String(config.realtimeStorageKey || `jsw-status-realtime-v3:${apiBase}:${realtimePath}`);
   const historyCacheKey = String(config.historyStorageKey || `jsw-status-history-v3:${apiBase}:${historyPath}`);
@@ -244,12 +223,7 @@
 
   const primaryState = {
     realtime: loadCachedPayload(realtimeCacheKey),
-<<<<<<<< HEAD:deploy/assets/app.bee4150a4e75.js
     history: loadCachedPayload(historyCacheKey)
-========
-    history: loadCachedPayload(historyCacheKey),
-    usingLegacyFallback: false
->>>>>>>> 2fce889d62d766d655d97e55e92ec5db86d44d35:deploy/assets/app.ff5dc974ac3f.js
   };
 
   const getSiteMap = (payload) => {
@@ -411,7 +385,6 @@
     }
   };
 
-<<<<<<<< HEAD:deploy/assets/app.bee4150a4e75.js
 
   const fetchHistory = async () => {
     const url = getHistoryUrl();
@@ -423,49 +396,6 @@
     updateLoadStateAfterSuccess();
   };
 
-========
-  const splitLegacyPayload = (payload) => {
-    const results = Array.isArray(payload?.results) ? payload.results : [];
-    return {
-      realtime: {
-        ok: true,
-        requested_mode: payload?.requested_mode,
-        effective_mode: payload?.effective_mode,
-        warm: payload?.warm,
-        preview_auto_manage: Boolean(payload?.preview_auto_manage),
-        site_count: results.length,
-        generated_at: payload?.generated_at,
-        results: results.map((site) => {
-          const copy = { ...site };
-          delete copy.history_7d;
-          return copy;
-        })
-      },
-      history: {
-        ok: true,
-        history_window_days: Number(payload?.history_window_days) > 0 ? Number(payload.history_window_days) : 7,
-        site_count: results.length,
-        generated_at: payload?.generated_at,
-        results: results.map((site) => ({
-          site_id: site.site_id,
-          hostname: site.hostname,
-          history_7d: site.history_7d || null
-        })).filter((site) => site.history_7d)
-      }
-    };
-  };
-
-  const fetchHistory = async () => {
-    const url = getHistoryUrl();
-    if (!url) throw new Error('history_url_missing');
-    const payload = await fetchJson(url, { cache: 'default' });
-    primaryState.history = payload;
-    saveCachedPayload(historyCacheKey, payload);
-    renderCards();
-    updateLoadStateAfterSuccess();
-  };
-
->>>>>>>> 2fce889d62d766d655d97e55e92ec5db86d44d35:deploy/assets/app.ff5dc974ac3f.js
   const fetchRealtime = async () => {
     const url = getRealtimeUrl();
     if (!url) throw new Error('realtime_url_missing');
@@ -476,28 +406,6 @@
     updateLoadStateAfterSuccess();
   };
 
-<<<<<<<< HEAD:deploy/assets/app.bee4150a4e75.js
-========
-  const tryLegacyFallback = async () => {
-    if (primaryState.usingLegacyFallback) return false;
-    const url = getLegacyUrl();
-    if (!url) return false;
-    try {
-      const payload = await fetchJson(url, { cache: 'no-store' });
-      const split = splitLegacyPayload(payload);
-      primaryState.realtime = split.realtime;
-      primaryState.history = split.history;
-      primaryState.usingLegacyFallback = true;
-      saveCachedPayload(realtimeCacheKey, split.realtime);
-      saveCachedPayload(historyCacheKey, split.history);
-      renderCards();
-      updateLoadStateAfterSuccess();
-      return true;
-    } catch {
-      return false;
-    }
-  };
->>>>>>>> 2fce889d62d766d655d97e55e92ec5db86d44d35:deploy/assets/app.ff5dc974ac3f.js
 
   const bootstrap = async () => {
     if (!apiBase) {
@@ -526,18 +434,6 @@
 
     loadingTimers.forEach(clearTimeout);
 
-<<<<<<<< HEAD:deploy/assets/app.bee4150a4e75.js
-========
-    const bothFailed = historyResult.status === 'rejected' && realtimeResult.status === 'rejected';
-    if (bothFailed) {
-      const fallbackOk = await tryLegacyFallback();
-      if (!fallbackOk) {
-        const reason = historyResult.reason instanceof Error ? historyResult.reason.message : t.loadError;
-        renderError(`${t.loadError}: ${reason}`, Boolean(primaryState.realtime || primaryState.history));
-        return;
-      }
-    }
->>>>>>>> 2fce889d62d766d655d97e55e92ec5db86d44d35:deploy/assets/app.ff5dc974ac3f.js
 
     updateLoadStateAfterSuccess();
 
